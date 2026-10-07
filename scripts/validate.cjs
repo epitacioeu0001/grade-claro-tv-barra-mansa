@@ -1,0 +1,20 @@
+const fs=require('fs');
+const h=fs.readFileSync('index.html','utf8');
+const scripts=[...h.matchAll(/<script>([\s\S]*?)<\/script>/g)].map(m=>m[1]);
+for(const s of scripts)new Function(s);
+const db=JSON.parse(h.match(/const DB=(\{.*\});/)[1]);
+const byName=n=>db.channels.find(c=>c.n===n);
+const count=id=>Object.values(db.programs).reduce((n,d)=>n+(d[id]?.length||0),0);
+const required=['ESPN 2','ESPN 3 HD','ESPN 6 HD','Cultura','History 2 HD'];
+const filled=Object.fromEntries(required.map(n=>[n,count(byName(n)?.i)]));
+const removed=['TV Escola','TV Brasil HD','Band HD','Cultura HD','Gazeta HD','Agro Mais HD','Band News HD','CNN Brasil HD','France 24','France 24 HD','GloboNews HD ³','Record News HD','Premiere HD 6','Premiere HD 7'];
+for(const n of removed)if(byName(n))throw new Error('Canal vermelho ainda presente: '+n);
+const key=n=>n.normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().replace(/[³²¹]/g,'').replace(/\s+hd\b/g,'').replace(/\s*\((?:local|tv rio sul|nova friburgo)\)\s*/g,' ').replace(/\s+/g,' ').trim();
+const groups=new Map();for(const c of db.channels)(groups.get(key(c.n))||groups.set(key(c.n),[]).get(key(c.n))).push(c);
+const bad=[];for(const [k,g] of groups){const normal=g.find(c=>!/\bHD\b/i.test(c.n)&&count(c.i));const hd=g.find(c=>/\bHD\b/i.test(c.n)&&count(c.i));if(normal&&hd)bad.push(k)}
+if(bad.length)throw new Error('Duplicidades SD/HD com dados: '+bad.join(', '));
+const missingLogos=db.channels.filter(c=>!String(c.l||'').trim()).map(c=>c.n);
+if(db.channels.length<150)throw new Error('Quantidade de canais anormalmente baixa: '+db.channels.length);
+if(Object.keys(db.programs).length<7)throw new Error('Período publicado insuficiente');
+if(missingLogos.length)throw new Error('Canais sem logo: '+missingLogos.join(', '));
+console.log(JSON.stringify({syntax:'ok',channels:db.channels.length,filled,removed:removed.length,duplicatePairsWithData:bad.length,missingLogos},null,2));
